@@ -1,30 +1,34 @@
-import random
 import time
 
-from activation import Activation, tanh
 import numpy as np
 from sklearn.metrics import mean_squared_error
+
+from activation import Activation, sigmoid
 
 HIST = 7
 
 
 def __get_train_data(data: list):
-    seventypercent = int(len(data)*0.7)
-    return data[:seventypercent]
+    sixtypercent = int(len(data)*0.6)
+    return data[:sixtypercent]
 
 
 def __get_test_data(data: list):
-    seventypercent = int(len(data)*0.7)
-    return data[seventypercent:]
+    sixtypercent = int(len(data)*0.6)
+    return data[sixtypercent:]
 
 
-def apply(data: list, bias=1) -> list:
-    train_result = __train(data, tanh(), [100, 50], bias, 0.0001)
-    should_save = input('Save this network? (Y/n)')
-    if should_save.lower() == 'y':
+def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_rate=0.0001, save=False, bias=1) -> list:
+    activations = [activation for _ in range(len(hidden_layers)+3)]
+    return apply(data, hidden_layers, activations, acceptable_error_rate, save, bias)
+
+
+def apply(data: list, hidden_layers: list, activations: list, acceptable_error_rate=0.0001, save=False, bias=1) -> list:
+    train_result = __train(data, activations, hidden_layers, bias, acceptable_error_rate)
+    if save:
         __save(train_result)
 
-    test_result = __test(data, tanh(), train_result[0], train_result[1], bias)
+    test_result = __test(data, activations, train_result[0], train_result[1], bias)
     print('Predicted values:')
     print('New Cases; New Deaths')
     predicted = []
@@ -38,7 +42,7 @@ def apply(data: list, bias=1) -> list:
     return predicted
 
 
-def __train(data: list, activation: Activation, hidden_layers: list, bias: int, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
+def __train(data: list, activations: list, hidden_layers: list, bias: int, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
     print('Training Neural Network...')
     train_data = __get_train_data(data)
     train_x = (np.array([data[i:i + HIST] for i in range(len(train_data)-HIST)]))/200000
@@ -49,7 +53,6 @@ def __train(data: list, activation: Activation, hidden_layers: list, bias: int, 
         neural_net.append(i)
     neural_net.append(len(train_y[0]))
     weight_list = [np.random.random((neural_net[layer+1], neural_net[layer]))*0.5-0.25 for layer in range(len(neural_net)-1)]
-    delta = [np.zeros(neural_net[layer+1]) for layer in range(len(neural_net)-1)]
 
     epoch = 0
     error_sum = len(train_x2)
@@ -58,27 +61,33 @@ def __train(data: list, activation: Activation, hidden_layers: list, bias: int, 
         error_sum = 0.0
         epoch += 1
         time0 = time.time()
-        for inp, out in random.sample([(a, b) for a, b in zip(train_x2, train_y)], len(train_x2)):
-            layer = [np.array(list(inp) + [1.0]*bias)]
-            for neuron in range(len(neural_net)-1):
-                layer.append(activation.fn(np.dot(weight_list[neuron], neural_net[neuron])))
-            error = out - layer[-1]
-            for neuron in reversed(range(len(neural_net)-1)):
-                if neuron == len(neural_net)-2:
-                    delta[neuron][:] = error*activation.dfn(layer[-1])
+        for inp, out in zip(train_x2, train_y):
+            neuron_layer = [list(inp) + [1.0] * bias]
+            for l in range(len(neural_net) - 1):
+                activation = activations[l]
+                neuron_layer.append([activation.fn(sum([neuron_layer[l][i] * weight_list[l][j][i] for i in range(neural_net[l])])) for j in range(neural_net[l + 1])])
+
+            error = [out[j] - neuron_layer[-1][j] for j in range(neural_net[-1])]
+            delta = [None for _ in range(len(neural_net) - 1)]
+            for l in reversed(range(len(neural_net) - 1)):
+                activation = activations[l]
+                if l == len(neural_net) - 2:
+                    delta[l] = [error[j] * activation.dfn(neuron_layer[-1][j]) for j in range(neural_net[-1])]
                 else:
-                    np.dot(delta[neuron+1], weight_list[neuron+1], out=delta[neuron])
-                    delta[neuron] *= activation.dfn(layer[neuron+1])
+                    delta[l] = [sum([delta[l + 1][j] * weight_list[l + 1][j][i] for j in range(neural_net[l + 2])]) * activation.dfn(neuron_layer[l + 1][i])
+                                for i in range(neural_net[l + 1])]
 
-                weight_list[neuron] += 0.01 * delta[neuron].reshape((neural_net[neuron+1], 1))*layer[neuron].reshape((1, neural_net[neuron]))
+                for i in range(neural_net[l]):
+                    for j in range(neural_net[l + 1]):
+                        weight_list[l][j][i] += 0.01 * delta[l][j] * neuron_layer[l][i]
 
-            error_sum += sum([error[j]**2 for j in range(neural_net[-1])])
-        print(f'Epoch {epoch}/{max_epoch} - error: {round(error_sum/len(train_x2), 3)} - elapsed time: {round(time.time()-time0, 3)}ms')
-    print(f'Total elapsed time: {round(time.time()-start_time, 3)}ms')
+            error_sum += sum([error[j] ** 2 for j in range(neural_net[-1])])
+        print(f'Epoch {epoch}/{max_epoch} - error: {round(error_sum/len(train_x2), 3)} - elapsed time: {round(time.time()-time0, 3)}s')
+    print(f'Total elapsed time: {round(time.time()-start_time, 3)}s')
     return neural_net, weight_list
 
 
-def __test(data: list, activation: Activation, neural_net: list, weight_list: list, bias: int) -> tuple:
+def __test(data: list, activations: list, neural_net: list, weight_list: list, bias: int) -> tuple:
     print('Testing Neural Network...')
     test_data = __get_test_data(data)
     test_x = (np.array([test_data[i:i+HIST] for i in range(len(test_data)-HIST)]))/200000
@@ -87,9 +96,11 @@ def __test(data: list, activation: Activation, neural_net: list, weight_list: li
 
     predicted = []
     for inp, out in zip(test_x2, test_y):
-        neuron_layer = [np.array(list(inp) + [bias])]
-        for layer in range(len(neural_net)-1):
-            neuron_layer.append(activation.fn(np.dot(weight_list)))
+        neuron_layer = [list(inp) + [1.0] * bias]
+        for l in range(len(neural_net) - 1):
+            activation = activations[l]
+            neuron_layer.append([activation.fn(sum([neuron_layer[l][i] * weight_list[l][j][i] for i in range(neural_net[l])])) for j in range(neural_net[l + 1])])
+
         predicted.append(neuron_layer[-1])
     predicted = np.array(predicted)
     print('Prediction MSE: ', mean_squared_error(test_y, predicted))
