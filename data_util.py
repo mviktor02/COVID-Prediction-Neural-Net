@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta
-from os import listdir, remove
+from os import listdir, remove, mkdir
 from os.path import exists, isfile, join
 import numpy as np
 import re
@@ -46,6 +46,8 @@ def __is_number(s: str) -> bool:
 
 def __delete_old():
     date_regex = re.compile(r'\d\d\d\d-\d\d-\d\d')
+    if not exists('data'):
+        mkdir('data')
     files = [f for f in listdir('data') if isfile(join('data', f))]
     for f in files:
         if f.endswith('.csv'):
