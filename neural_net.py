@@ -4,6 +4,7 @@ from os import mkdir
 from os.path import join, exists
 from datetime import datetime
 import numpy as np
+from numpy import ndarray
 from sklearn.metrics import mean_squared_error
 
 from activation import Activation, sigmoid
@@ -23,11 +24,10 @@ def __get_test_data(data: list, percent: float):
 
 def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_margin=0.0001, save=False, bias=1, train_percent=0.6, load_file=None) -> list:
     activations = [activation for _ in range(len(hidden_layers)+3)]
-    return apply(data, hidden_layers, activations, train_percent, acceptable_error_margin, save, bias)
+    return apply(data, hidden_layers, activations, train_percent, acceptable_error_margin, save, bias, load_file)
 
 
-def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6, acceptable_error_margin=0.0001, save=False, bias=1, load_file=None) -> list:
-    train_result = None
+def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6, acceptable_error_margin=0.0001, save=False, bias=1, load_file=None) -> ndarray:
     if load_file is None:
         train_result = __train(data, activations, hidden_layers, bias, train_percent, acceptable_error_margin)
         if save:
@@ -36,18 +36,13 @@ def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6,
         train_result = __load(load_file)
 
     test_result = __test(data, activations, train_result[0], train_result[1], bias, 1-train_percent)
-    print('Predicted values:')
-    print('New Cases; New Deaths')
-    predicted = []
+    predicted_values = []
     for a, b in zip(test_result[0], test_result[1]):
         for _a, _b in zip(a*200000, b*200000):
-            new_cases = round(_a, 2)
-            new_deaths = round(_b, 2)
-            print(type(new_cases))
-            predicted.append([new_cases, new_deaths])
-            print(new_cases, new_deaths, end='; ')
-        print()
-    return predicted
+            __a = float(round(_a, 2))
+            __b = float(round(_b, 2))
+            predicted_values.append((__a+__b)/2)
+    return np.reshape(predicted_values, (-1, 2))
 
 
 def __train(data: list, activations: list, hidden_layers: list, bias: int, train_percent: float, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
@@ -129,8 +124,6 @@ def __save(train_result: tuple):
 
     filename = join('export', f"{datetime.now().strftime('%Y-%m-%d %H-%M-%S')} {str(train_result[2])}.json")
     print(f'Saving as {filename}...')
-    print(type(train_result[1][0]))
-    print(np.shape(train_result[1][0]))
     weight_list = []
     for i in range(len(train_result[1])):
         weight_list.append(train_result[1][i].tolist())
