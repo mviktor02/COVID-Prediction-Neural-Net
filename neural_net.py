@@ -1,5 +1,8 @@
+import json
 import time
-
+from os import mkdir
+from os.path import join, exists
+from datetime import datetime
 import numpy as np
 from sklearn.metrics import mean_squared_error
 
@@ -8,27 +11,31 @@ from activation import Activation, sigmoid
 HIST = 7
 
 
-def __get_train_data(data: list):
-    sixtypercent = int(len(data)*0.6)
-    return data[:sixtypercent]
+def __get_train_data(data: list, percent: float):
+    divider = int(len(data)*percent)
+    return data[:divider]
 
 
-def __get_test_data(data: list):
-    sixtypercent = int(len(data)*0.6)
-    return data[sixtypercent:]
+def __get_test_data(data: list, percent: float):
+    divider = int(len(data)*percent)
+    return data[divider:]
 
 
-def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_rate=0.0001, save=False, bias=1) -> list:
+def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_margin=0.0001, save=False, bias=1, train_percent=0.6, load_file=None) -> list:
     activations = [activation for _ in range(len(hidden_layers)+3)]
-    return apply(data, hidden_layers, activations, acceptable_error_rate, save, bias)
+    return apply(data, hidden_layers, activations, train_percent, acceptable_error_margin, save, bias)
 
 
-def apply(data: list, hidden_layers: list, activations: list, acceptable_error_rate=0.0001, save=False, bias=1) -> list:
-    train_result = __train(data, activations, hidden_layers, bias, acceptable_error_rate)
-    if save:
-        __save(train_result)
+def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6, acceptable_error_margin=0.0001, save=False, bias=1, load_file=None) -> list:
+    train_result = None
+    if load_file is None:
+        train_result = __train(data, activations, hidden_layers, bias, train_percent, acceptable_error_margin)
+        if save:
+            __save(train_result)
+    else:
+        train_result = __load(load_file)
 
-    test_result = __test(data, activations, train_result[0], train_result[1], bias)
+    test_result = __test(data, activations, train_result[0], train_result[1], bias, 1-train_percent)
     print('Predicted values:')
     print('New Cases; New Deaths')
     predicted = []
@@ -36,15 +43,16 @@ def apply(data: list, hidden_layers: list, activations: list, acceptable_error_r
         for _a, _b in zip(a*200000, b*200000):
             new_cases = round(_a, 2)
             new_deaths = round(_b, 2)
+            print(type(new_cases))
             predicted.append([new_cases, new_deaths])
             print(new_cases, new_deaths, end='; ')
         print()
     return predicted
 
 
-def __train(data: list, activations: list, hidden_layers: list, bias: int, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
+def __train(data: list, activations: list, hidden_layers: list, bias: int, train_percent: float, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
     print('Training Neural Network...')
-    train_data = __get_train_data(data)
+    train_data = __get_train_data(data, train_percent)
     train_x = (np.array([data[i:i + HIST] for i in range(len(train_data)-HIST)]))/200000
     train_y = (np.array([data[i+HIST] for i in range(len(train_data)-HIST)]))/200000
     train_x2 = train_x.reshape((train_x.shape[0], train_x.shape[1]*train_x.shape[2]))
@@ -84,12 +92,12 @@ def __train(data: list, activations: list, hidden_layers: list, bias: int, accep
             error_sum += sum([error[j] ** 2 for j in range(neural_net[-1])])
         print(f'Epoch {epoch}/{max_epoch} - error: {round(error_sum/len(train_x2), 3)} - elapsed time: {round(time.time()-time0, 3)}s')
     print(f'Total elapsed time: {round(time.time()-start_time, 3)}s')
-    return neural_net, weight_list
+    return neural_net, weight_list, round(error_sum/len(train_x2), 3)
 
 
-def __test(data: list, activations: list, neural_net: list, weight_list: list, bias: int) -> tuple:
+def __test(data: list, activations: list, neural_net: list, weight_list: list, bias: int, test_percent: float) -> tuple:
     print('Testing Neural Network...')
-    test_data = __get_test_data(data)
+    test_data = __get_test_data(data, test_percent)
     test_x = (np.array([test_data[i:i+HIST] for i in range(len(test_data)-HIST)]))/200000
     test_y = (np.array([test_data[i+HIST] for i in range(len(test_data)-HIST)]))/200000
     test_x2 = test_x.reshape((test_x.shape[0], test_x.shape[1] * test_x.shape[2]))
@@ -116,5 +124,33 @@ def __check_error_margin(margin: float, error: float):
 
 
 def __save(train_result: tuple):
-    # TODO save the train result to file
-    print('Saving...')
+    if not exists('export'):
+        mkdir('export')
+
+    filename = join('export', f"{datetime.now().strftime('%Y-%m-%d %H-%M-%S')} {str(train_result[2])}.json")
+    print(f'Saving as {filename}...')
+    print(type(train_result[1][0]))
+    print(np.shape(train_result[1][0]))
+    weight_list = []
+    for i in range(len(train_result[1])):
+        weight_list.append(train_result[1][i].tolist())
+    data = {
+        'neural_net': train_result[0],
+        'weight_list': weight_list
+    }
+    json_string = json.dumps(data, indent='  ')
+    with open(filename, 'w') as export:
+        export.write(json_string)
+    print('Successfully saved the network!')
+
+
+def __load(filename: str) -> tuple:
+    print(f'Loading {filename}...')
+    with open(filename) as f:
+        jsonfile = json.load(f)
+        neural_net = jsonfile['neural_net']
+        loaded_weight_list = jsonfile['weight_list']
+        weight_list = []
+        for i in range(len(loaded_weight_list)):
+            weight_list.append(np.array(loaded_weight_list[i]))
+        return neural_net, weight_list

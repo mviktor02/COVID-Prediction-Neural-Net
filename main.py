@@ -6,7 +6,7 @@ from data_util import get_latest, get_7day_avg
 from neural_net import apply_simple
 
 data = get_7day_avg(get_latest())
-predicted = apply_simple(data, [100, 50], sigmoid())
+predicted = apply_simple(data, [100, 50], sigmoid(), save=True)
 plot_data = np.concatenate((data, predicted), axis=0)
 
 lines = plt.plot(plot_data)
