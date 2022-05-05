@@ -92,4 +92,4 @@ def __download(iso_codes: list[str]):
         if lines[-1].split(',')[3] != datetime.strftime(datetime.today(), '%Y-%m-%d'):
             print("Data update required...")
             remove(file)
-            __download()
+            __download(iso_codes)
