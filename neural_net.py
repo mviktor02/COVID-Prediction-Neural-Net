@@ -1,13 +1,14 @@
-import json
-import time
 from os import mkdir
 from os.path import join, exists
 from datetime import datetime
-import numpy as np
 from numpy import ndarray
 from sklearn.metrics import mean_squared_error
 
-from activation import Activation, sigmoid
+import json
+import time
+import numpy as np
+
+from activation import Activation
 
 HIST = 7
 
@@ -22,12 +23,34 @@ def __get_test_data(data: list, percent: float):
     return data[divider:]
 
 
-def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_margin=0.0001, save=False, bias=1, train_percent=0.6, load_file=None) -> list:
+def apply_simple(data: list, hidden_layers: list, activation: Activation, acceptable_error_margin=0.0001, save=False, bias=1, train_percent=0.6, load_file=None) -> ndarray:
+    """
+    :param data: latest covid data; daily new cases and new deaths
+    :param hidden_layers: number of neurons in each hidden layer
+    :param activation: activation function to be used in each layer
+    :param train_percent: percentage of covid data to be used for training; rest will be used for testing
+    :param acceptable_error_margin: margin of error where the neural network should stop training
+    :param save: should the trained network be exported to a json file?
+    :param bias: bias of the network
+    :param load_file: trained network data to load; if given, save is ignored and this will be used as the trained data
+    :return: list of predicted values; [new_cases, new_deaths]
+    """
     activations = [activation for _ in range(len(hidden_layers)+3)]
     return apply(data, hidden_layers, activations, train_percent, acceptable_error_margin, save, bias, load_file)
 
 
 def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6, acceptable_error_margin=0.0001, save=False, bias=1, load_file=None) -> ndarray:
+    """
+    :param data: latest covid data; daily new cases and new deaths
+    :param hidden_layers: number of neurons in each hidden layer
+    :param activations: list of activation functions to use in each layer; has to have a length of len(hidden_layers)+3
+    :param train_percent: percentage of covid data to be used for training; rest will be used for testing
+    :param acceptable_error_margin: margin of error where the neural network should stop training
+    :param save: should the trained network be exported to a json file?
+    :param bias: bias of the network
+    :param load_file: trained network data to load; if given, save is ignored and this will be used as the trained data
+    :return: list of predicted values; [new_cases, new_deaths]
+    """
     if load_file is None:
         train_result = __train(data, activations, hidden_layers, bias, train_percent, acceptable_error_margin)
         if save:
@@ -37,11 +60,20 @@ def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6,
 
     test_result = __test(data, activations, train_result[0], train_result[1], bias, 1-train_percent)
     predicted_values = []
+    is_new_death = False
     for a, b in zip(test_result[0], test_result[1]):
         for _a, _b in zip(a*200000, b*200000):
             __a = float(round(_a, 2))
             __b = float(round(_b, 2))
-            predicted_values.append((__a+__b)/2)
+            # To get reasonable results, we need
+            # the minimum of the predicted deaths
+            # and the average of the predicted cases.
+            if is_new_death:
+                predicted_values.append(min(__a, __b))
+                is_new_death = False
+            else:
+                predicted_values.append((__a+__b)/2)
+                is_new_death = True
     return np.reshape(predicted_values, (-1, 2))
 
 
