@@ -51,18 +51,20 @@ def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6,
     :param load_file: trained network data to load; if given, save is ignored and this will be used as the trained data
     :return: list of predicted values; [new_cases, new_deaths]
     """
+    highest_data = np.array(data).sum(axis=0)[0] + 25000
+
     if load_file is None:
-        train_result = __train(data, activations, hidden_layers, bias, train_percent, acceptable_error_margin)
+        train_result = __train(data, activations, hidden_layers, bias, train_percent, highest_data, acceptable_error_margin)
         if save:
             __save(train_result)
     else:
         train_result = __load(load_file)
 
-    test_result = __test(data, activations, train_result[0], train_result[1], bias, 1-train_percent)
+    test_result = __test(data, activations, train_result[0], train_result[1], bias, 1-train_percent, highest_data)
     predicted_values = []
     is_new_death = False
     for a, b in zip(test_result[0], test_result[1]):
-        for _a, _b in zip(a*200000, b*200000):
+        for _a, _b in zip(a*highest_data, b*highest_data):
             __a = float(round(_a, 2))
             __b = float(round(_b, 2))
             # To get reasonable results, we need
@@ -77,11 +79,11 @@ def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6,
     return np.reshape(predicted_values, (-1, 2))
 
 
-def __train(data: list, activations: list, hidden_layers: list, bias: int, train_percent: float, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
+def __train(data: list, activations: list, hidden_layers: list, bias: int, train_percent: float, highest_data: int, acceptable_error_margin=0.0, max_epoch=20) -> tuple:
     print('Training Neural Network...')
     train_data = __get_train_data(data, train_percent)
-    train_x = (np.array([data[i:i + HIST] for i in range(len(train_data)-HIST)]))/200000
-    train_y = (np.array([data[i+HIST] for i in range(len(train_data)-HIST)]))/200000
+    train_x = (np.array([data[i:i + HIST] for i in range(len(train_data)-HIST)]))/highest_data
+    train_y = (np.array([data[i+HIST] for i in range(len(train_data)-HIST)]))/highest_data
     train_x2 = train_x.reshape((train_x.shape[0], train_x.shape[1]*train_x.shape[2]))
     neural_net = [len(train_x2[0])+bias]
     for i in hidden_layers:
@@ -122,11 +124,11 @@ def __train(data: list, activations: list, hidden_layers: list, bias: int, train
     return neural_net, weight_list, round(error_sum/len(train_x2), 3)
 
 
-def __test(data: list, activations: list, neural_net: list, weight_list: list, bias: int, test_percent: float) -> tuple:
+def __test(data: list, activations: list, neural_net: list, weight_list: list, bias: int, test_percent: float, highest_data: int) -> tuple:
     print('Testing Neural Network...')
     test_data = __get_test_data(data, test_percent)
-    test_x = (np.array([test_data[i:i+HIST] for i in range(len(test_data)-HIST)]))/200000
-    test_y = (np.array([test_data[i+HIST] for i in range(len(test_data)-HIST)]))/200000
+    test_x = (np.array([test_data[i:i+HIST] for i in range(len(test_data)-HIST)]))/highest_data
+    test_y = (np.array([test_data[i+HIST] for i in range(len(test_data)-HIST)]))/highest_data
     test_x2 = test_x.reshape((test_x.shape[0], test_x.shape[1] * test_x.shape[2]))
 
     predicted = []
