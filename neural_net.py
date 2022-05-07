@@ -51,7 +51,7 @@ def apply(data: list, hidden_layers: list, activations: list, train_percent=0.6,
     :param load_file: trained network data to load; if given, save is ignored and this will be used as the trained data
     :return: list of predicted values; [new_cases, new_deaths]
     """
-    highest_data = np.array(data).sum(axis=0)[0] + 25000
+    highest_data = max([x[0] for x in data]) + 25000
 
     if load_file is None:
         train_result = __train(data, activations, hidden_layers, bias, train_percent, highest_data, acceptable_error_margin)
